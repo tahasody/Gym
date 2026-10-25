@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fitness Gym</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef1ec;--card:#fff;--ink:#14231d;--mut:#66756d;--ac:#0f5c4d;--bad:#d6452f;--bd:#d9dfd6}
+*{box-sizing:border-box}
+body{margin:0;font-family:Cairo,Tahoma,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--ac);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
+header h1{margin:0;font-size:20px;font-weight:800}
+nav{display:flex;gap:4px;padding:8px;overflow-x:auto;background:#fff;border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:5}
+nav button{flex:1;white-space:nowrap;border:0;background:none;padding:10px 12px;font:600 15px inherit;font-family:inherit;color:var(--mut);border-radius:8px}
+nav button.on{background:var(--ac);color:#fff}
+main{padding:12px;max-width:760px;margin:auto}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:10px}
+.card h3{margin:0 0 4px;font-size:17px}
+.mut{color:var(--mut);font-size:14px}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.b,.g,.r{border:0;border-radius:8px;padding:9px 14px;font-family:inherit;font-weight:600;font-size:14px;cursor:pointer;text-decoration:none;display:inline-block}
+.b{background:var(--ac);color:#fff}.g{background:#e4e9e2;color:var(--ink)}.r{background:#fbe6e2;color:var(--bad)}
+.wa{background:#1fa855;color:#fff}
+input,select{width:100%;padding:11px;border:1px solid var(--bd);border-radius:8px;font:inherit;margin:4px 0 10px;background:#fff}
+label{font-size:14px;color:var(--mut)}
+.bar{height:6px;background:#e4e9e2;border-radius:3px;overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:var(--ac)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.num{font-size:26px;font-weight:800}
+.bad{color:var(--bad)}
+dialog{border:0;border-radius:12px;width:min(92vw,420px);padding:18px}dialog::backdrop{background:#0006}
+#login{max-width:360px;margin:12vh auto;padding:16px}
+.err{color:var(--bad);font-size:14px;min-height:20px}
+</style>
+</head>
+<body>
+<div id="login" hidden>
+  <div class="card">
+    <h2 style="margin-top:0">Fitness Gym</h2>
+    <form id="lf">
+      <label>الإيميل<input name="e" type="email" required></label>
+      <label>الباسورد<input name="p" type="password" required></label>
+      <div class="err" id="le"></div>
+      <button class="b" style="width:100%">دخول</button>
+    </form>
+  </div>
+</div>
+<div id="app" hidden>
+  <header><h1>Fitness Gym</h1><button class="g" data-a="out">خروج</button></header>
+  <nav id="nav"></nav>
+  <main id="main"></main>
+</div>
+<dialog id="dlg"></dialog>
+
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import{getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import{getFirestore,collection,onSnapshot,addDoc,updateDoc,deleteDoc,doc}from"https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const app=initializeApp({
+  apiKey:"AIzaSyB9d-U_MqumAU-XKhZn-hJvm54gkRRPRWs",
+  authDomain:"fitness-gym-1985.firebaseapp.com",
+  projectId:"fitness-gym-1985",
+  storageBucket:"fitness-gym-1985.firebasestorage.app",
+  messagingSenderId:"233438047266",
+  appId:"1:233438047266:web:d1541aa3ae0d8f482d6e7b"
+});
+const auth=getAuth(app),db=getFirestore(app);
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const money=n=>(+n||0).toLocaleString('ar-EG')+' ج.م';
+const DEF_MSG='أهلاً {الاسم} 👋\nحصص اشتراكك في Fitness Gym خلصت. تحب نجدد لك الاشتراك؟ 💪';
+
+let plans=[],members=[],tab='home',q='',seeded=false,unsubs=[];
+const TABS=[['home','الرئيسية'],['members','الأعضاء'],['plans','الاشتراكات'],['fin','المالية']];
+
+/* ---------- auth ---------- */
+onAuthStateChanged(auth,u=>{
+  unsubs.forEach(f=>f());unsubs=[];
+  $('login').hidden=!!u;$('app').hidden=!u;
+  if(!u)return;
+  unsubs.push(onSnapshot(collection(db,'plans'),s=>{
+    plans=s.docs.map(d=>({id:d.id,...d.data()}));
+    if(s.empty&&!seeded){seeded=true;[['12G',12],['12T',12],['30G',30],['30T',30]].forEach(([name,sessions])=>addDoc(collection(db,'plans'),{name,sessions,price:0}))}
+    render();
+  }));
+  unsubs.push(onSnapshot(collection(db,'members'),s=>{
+    members=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+    render();
+  }));
+});
+$('lf').onsubmit=async e=>{
+  e.preventDefault();const f=new FormData(e.target);$('le').textContent='';
+  try{await signInWithEmailAndPassword(auth,f.get('e'),f.get('p'))}
+  catch(x){$('le').textContent='الإيميل أو الباسورد غلط، أو الدخول بالإيميل مش متفعّل في Firebase.'}
+};
+
+/* ---------- helpers ---------- */
+function form(title,fields,ok){
+  const d=$('dlg');
+  d.innerHTML=`<form><h3 style="margin-top:0">${title}</h3>${fields.map(f=>`<label>${f.l}${f.o
+    ?`<select name="${f.k}">${f.o.map(o=>`<option value="${esc(o[0])}"${o[0]==f.v?' selected':''}>${esc(o[1])}</option>`).join('')}</select>`
+    :`<input name="${f.k}" type="${f.t||'text'}" value="${esc(f.v)}" ${f.n?'':'required'}>`}</label>`).join('')}
+    <div class="row"><button class="b">حفظ</button><button type="button" class="g" data-a="close">إلغاء</button></div></form>`;
+  d.querySelector('form').onsubmit=e=>{e.preventDefault();ok(Object.fromEntries(new FormData(e.target)));d.close()};
+  d.showModal();
+}
+const planOpts=()=>plans.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>[p.id,`${p.name} (${p.sessions} حصة - ${p.price} ج.م)`]);
+const remain=m=>Math.max(0,(m.price||0)-(m.paid||0));
+const finished=m=>(m.used||0)>=(m.total||0);
+function waLink(m){
+  let p=String(m.phone||'').replace(/\D/g,'');
+  if(p.startsWith('0'))p='20'+p.slice(1);
+  const t=(localStorage.getItem('msg')||DEF_MSG).replaceAll('{الاسم}',m.name);
+  return`https://wa.me/${p}?text=${encodeURIComponent(t)}`;
+}
+function memberCard(m,withWa){
+  const pct=m.total?Math.min(100,(m.used||0)/m.total*100):0;
+  return`<div class="card"><h3>${esc(m.name)}</h3>
+  <div class="mut">${esc(m.phone)} · ${esc(m.planName||'-')}</div>
+  <div class="bar"><i style="width:${pct}%"></i></div>
+  <div class="mut">الحصص: ${m.used||0} من ${m.total||0} · مدفوع ${money(m.paid)} · ${remain(m)?`<b class="bad">متبقي ${money(remain(m))}</b>`:'مسدد'}</div>
+  <div class="row">
+    ${withWa?`<a class="b wa" target="_blank" href="${waLink(m)}">رسالة واتساب</a><button class="b" data-a="renew" data-id="${m.id}">تجديد</button>`
+    :`<button class="b" data-a="att" data-id="${m.id}">تسجيل حضور</button><button class="g" data-a="pay" data-id="${m.id}">دفع</button><button class="g" data-a="renew" data-id="${m.id}">تجديد</button><button class="g" data-a="edit" data-id="${m.id}">تعديل</button><button class="r" data-a="del" data-id="${m.id}">حذف</button>`}
+  </div></div>`;
+}
+
+/* ---------- views ---------- */
+const views={
+  home(){
+    const f=members.filter(finished);
+    return`<div class="row" style="margin:0 0 10px"><button class="g" data-a="msg">تعديل نص رسالة الواتساب</button></div>`+
+      (f.length?`<p class="mut">${f.length} عضو خلصت حصصهم</p>`+f.map(m=>memberCard(m,true)).join(''):'<div class="card mut">مفيش أعضاء خلصت حصصهم دلوقتي.</div>');
+  },
+  members(){
+    return`<div class="row" style="margin:0 0 10px"><button class="b" data-a="addm">إضافة عضو</button></div>
+    <input id="q" placeholder="بحث بالاسم أو الموبايل" value="${esc(q)}"><div id="ml">${mlist()}</div>`;
+  },
+  plans(){
+    return`<div class="row" style="margin:0 0 10px"><button class="b" data-a="addp">إضافة اشتراك</button></div>`+
+    (plans.length?plans.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<div class="card"><h3>${esc(p.name)}</h3><div class="mut">${p.sessions} حصة · ${money(p.price)}</div>
+    <div class="row"><button class="g" data-a="editp" data-id="${p.id}">تعديل</button><button class="r" data-a="delp" data-id="${p.id}">حذف</button></div></div>`).join(''):'<div class="card mut">لسه مفيش اشتراكات.</div>');
+  },
+  fin(){
+    const paid=members.reduce((s,m)=>s+(+m.paid||0),0),rem=members.reduce((s,m)=>s+remain(m),0);
+    const debt=members.filter(m=>remain(m)>0);
+    return`<div class="grid"><div class="card"><div class="mut">إجمالي المدفوع</div><div class="num">${money(paid)}</div></div>
+    <div class="card"><div class="mut">إجمالي المتبقي</div><div class="num bad">${money(rem)}</div></div>
+    <div class="card"><div class="mut">عدد الأعضاء</div><div class="num">${members.length}</div></div>
+    <div class="card"><div class="mut">حصصهم خلصت</div><div class="num">${members.filter(finished).length}</div></div></div>
+    <h3>أعضاء عليهم مبالغ</h3>`+(debt.map(m=>`<div class="card"><b>${esc(m.name)}</b><div class="mut">${esc(m.phone)} · متبقي ${money(remain(m))}</div></div>`).join('')||'<div class="card mut">مفيش مبالغ متبقية.</div>');
+  }
+};
+function mlist(){
+  const k=q.trim().toLowerCase();
+  const l=members.filter(m=>!k||m.name.toLowerCase().includes(k)||String(m.phone).includes(k));
+  return l.map(m=>memberCard(m,false)).join('')||'<div class="card mut">مفيش أعضاء.</div>';
+}
+function render(){
+  if($('app').hidden)return;
+  $('nav').innerHTML=TABS.map(t=>`<button data-a="tab" data-id="${t[0]}" class="${tab===t[0]?'on':''}">${t[1]}</button>`).join('');
+  $('main').innerHTML=views[tab]();
+}
+
+/* ---------- actions ---------- */
+const col=n=>collection(db,n),ref=(n,id)=>doc(db,n,id);
+const today=()=>new Date().toISOString().slice(0,10);
+const sub=(p,paid)=>({planId:p.id,planName:p.name,total:+p.sessions,price:+p.price,used:0,paid:+paid||0,start:today()});
+const A={
+  tab:id=>{tab=id;render()},
+  out:()=>signOut(auth),
+  close:()=>$('dlg').close(),
+  msg:()=>form('نص الرسالة (استخدم {الاسم})',[{k:'t',l:'الرسالة',v:localStorage.getItem('msg')||DEF_MSG}],v=>localStorage.setItem('msg',v.t)),
+  addm:()=>{
+    if(!plans.length)return alert('أضف اشتراك الأول');
+    form('إضافة عضو',[{k:'name',l:'الاسم'},{k:'phone',l:'الموبايل',t:'tel'},{k:'plan',l:'الاشتراك',o:planOpts()},{k:'paid',l:'المدفوع الآن',t:'number',v:0}],
+      v=>addDoc(col('members'),{name:v.name,phone:v.phone,...sub(plans.find(p=>p.id===v.plan),v.paid)}));
+  },
+  edit:id=>{const m=members.find(x=>x.id===id);
+    form('تعديل عضو',[{k:'name',l:'الاسم',v:m.name},{k:'phone',l:'الموبايل',t:'tel',v:m.phone}],v=>updateDoc(ref('members',id),v))},
+  att:id=>{const m=members.find(x=>x.id===id);
+    if(finished(m))return alert('حصص العضو خلصت، جدّد الاشتراك.');
+    updateDoc(ref('members',id),{used:(m.used||0)+1})},
+  pay:id=>{const m=members.find(x=>x.id===id);
+    form(`دفع - ${esc(m.name)} (متبقي ${remain(m)})`,[{k:'a',l:'المبلغ',t:'number',v:remain(m)}],v=>updateDoc(ref('members',id),{paid:(m.paid||0)+(+v.a||0)}))},
+  renew:id=>{const m=members.find(x=>x.id===id);
+    form(`تجديد - ${esc(m.name)}`,[{k:'plan',l:'نوع الاشتراك',o:planOpts(),v:m.planId},{k:'paid',l:'المدفوع الآن',t:'number',v:0}],
+      v=>updateDoc(ref('members',id),sub(plans.find(p=>p.id===v.plan),v.paid)))},
+  del:id=>{if(confirm('تحذف العضو؟'))deleteDoc(ref('members',id))},
+  addp:()=>form('إضافة اشتراك',[{k:'name',l:'الاسم (مثال 12G)'},{k:'sessions',l:'عدد الحصص',t:'number'},{k:'price',l:'السعر',t:'number'}],
+    v=>addDoc(col('plans'),{name:v.name,sessions:+v.sessions,price:+v.price})),
+  editp:id=>{const p=plans.find(x=>x.id===id);
+    form('تعديل اشتراك',[{k:'name',l:'الاسم',v:p.name},{k:'sessions',l:'عدد الحصص',t:'number',v:p.sessions},{k:'price',l:'السعر',t:'number',v:p.price}],
+      v=>updateDoc(ref('plans',id),{name:v.name,sessions:+v.sessions,price:+v.price}))},
+  delp:id=>{if(confirm('تحذف الاشتراك؟ الأعضاء الحاليين مش هيتأثروا.'))deleteDoc(ref('plans',id))}
+};
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-a]');
+  if(t&&A[t.dataset.a])A[t.dataset.a](t.dataset.id);
+});
+document.addEventListener('input',e=>{
+  if(e.target.id==='q'){q=e.target.value;$('ml').innerHTML=mlist()}
+});
+</script>
+</body>
+</html>
